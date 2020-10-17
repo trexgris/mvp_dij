@@ -3,11 +3,11 @@ import json
 import heapq
 from collections import defaultdict
 from decimal import Decimal
+import hashlib
 
 from collections import deque, namedtuple
 
 week_list = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-
 
 
 inf = float('inf')
@@ -32,29 +32,29 @@ class Graph:
             )
         )
 
-    def get_node_pairs(self, n1, n2, both_ends=True):
-        if both_ends:
-            node_pairs = [[n1, n2], [n2, n1]]
-        else:
-            node_pairs = [[n1, n2]]
-        return node_pairs
+   #def get_node_pairs(self, n1, n2, both_ends=True):
+   #    if both_ends:
+   #        node_pairs = [[n1, n2], [n2, n1]]
+   #    else:
+   #        node_pairs = [[n1, n2]]
+   #    return node_pairs
 
-    def remove_edge(self, n1, n2, both_ends=True):
-        node_pairs = self.get_node_pairs(n1, n2, both_ends)
-        edges = self.edges[:]
-        for edge in edges:
-            if [edge.start, edge.end] in node_pairs:
-                self.edges.remove(edge)
+   #def remove_edge(self, n1, n2, both_ends=True):
+   #    node_pairs = self.get_node_pairs(n1, n2, both_ends)
+   #    edges = self.edges[:]
+   #    for edge in edges:
+   #        if [edge.start, edge.end] in node_pairs:
+   #            self.edges.remove(edge)
 
-    def add_edge(self, n1, n2, cost=1, both_ends=True):
-        node_pairs = self.get_node_pairs(n1, n2, both_ends)
-        for edge in self.edges:
-            if [edge.start, edge.end] in node_pairs:
-                return ValueError('Edge {} {} already exists'.format(n1, n2))
+   #def add_edge(self, n1, n2, cost=1, both_ends=True):
+   #    node_pairs = self.get_node_pairs(n1, n2, both_ends)
+   #    for edge in self.edges:
+   #        if [edge.start, edge.end] in node_pairs:
+   #            return ValueError('Edge {} {} already exists'.format(n1, n2))
 
-        self.edges.append(Edge(start=n1, end=n2, cost=cost))
-        if both_ends:
-            self.edges.append(Edge(start=n2, end=n1, cost=cost))
+   #    self.edges.append(Edge(start=n1, end=n2, cost=cost))
+   #    if both_ends:
+   #        self.edges.append(Edge(start=n2, end=n1, cost=cost))
 
     @property
     def neighbours(self):
@@ -93,6 +93,9 @@ class Graph:
             path.appendleft(current_vertex)
         return path
 
+def print_dij_path(path):
+    for node in path:
+        print(node.asdict2())
 
 
 
@@ -102,10 +105,12 @@ def get_stops_file_name(frm, to):
 
 
 def time_to_mins(time_str):
+    if time_str == '05:30':
+        tt = True
     return int(time_str[:-3]) * 60 + int(time_str[-2:])
 
 class CustomNode:
-    def __init__(self, city, lon, lat, day, time_dep):
+    def __init__(self, city, lon, lat, day, time_dep, wait_node = ''):
         self.city = city
         if lon is None:
             self.lon = Decimal(0.0)
@@ -117,11 +122,16 @@ class CustomNode:
             self.lat = Decimal(lat)
         self.day = day
         self.time_dep = time_dep
+        self.wait_node = wait_node
+    def asdict2(self):
+        return {'city': self.city, 'lon' : self.lon, 'lat': self.lat, 'day' : self.day, 'time': self.time_dep, 'wait_node': self.wait_node}
     def __hash__(self):
-        return hash((self.city, self.lon, self.lat, self.day, self.time_dep))
+        return hash((self.city, self.lon, self.lat, self.day, self.time_dep, self.wait_node))
     def __eq__(self, other):
         #to study
-        return (self.__class__ == other.__class__) and (self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
+        return (self.__class__ == other.__class__) and (self.wait_node == other.wait_node and self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
+
+DEBUG = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
 
 def compute_distance(from_node, to_node):  
         now = time_to_mins(from_node.time_dep)
@@ -199,6 +209,8 @@ class JsonParser:
                     to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'))
                     f_t_edge = CustomEdge(from_node, to_node)
                     self.graph.append((from_node, to_node, f_t_edge.dist))
+                    if from_node == DEBUG or to_node == DEBUG:
+                        tt = True
                     self.edges_per_main_node[(city_name, direct_connection)].add(f_t_edge)
 
         # not optimal
@@ -220,44 +232,25 @@ class JsonParser:
                 mindist = inf
                 n = None
                 for front_node in front_nodes_current_city:
-                    dist = compute_distance(front_node, end_node)
+                    dist = compute_distance(front_node, end_node) #same day same time and no other options = 10080 (next week), because of the way we hash things, it creates a node
+                    if dist == 10080:
+                        ttt = True
+                        if front_node == end_node:
+                            tt = True
+                    if front_node == end_node.time_dep : # +
+                        tt = True
                     if dist < mindist:
                         mindist = dist
                         n = front_node
+                        n.wait_node = 'True'
                 self.graph.append(( n, end_node, mindist))
-
-               
-class CustomDijkstra:
-    def __init__(self, graph):
-        pass
-    def calculate_distances(self, graph, starting_vertex):
-        distances = {vertex: float('infinity') for vertex in graph}
-        distances[starting_vertex] = 0
-
-        pq = [(0, starting_vertex)]
-        while len(pq) > 0:
-            current_distance, current_vertex = heapq.heappop(pq)
-
-            # Nodes can get added to the priority queue multiple times. We only
-            # process a vertex the first time we remove it from the priority queue.
-            if current_distance > distances[current_vertex]:
-                continue
-
-            for neighbor, weight in graph[current_vertex].items():
-                distance = current_distance + weight
-
-                # Only consider this new path if it's better than any path we've
-                # already found.
-                if distance < distances[neighbor]:
-                    distances[neighbor] = distance
-                    heapq.heappush(pq, (distance, neighbor))
-
-        return distances
-
-
 
 
 if __name__ == '__main__':
+
+    #TODO: If a bus arrives at the same time as the next one goes, we are still gonna make a connection for the same very day. However in reality its not realistic, perhaps 
+    # I should exlude this case if the wait time <= 0
+
 
     test = defaultdict(set)
     test[('a', 'b')].add('fuck')
@@ -281,11 +274,18 @@ if __name__ == '__main__':
 
     from_liberia = CustomNode(city='Liberia',lon=0.0, lat=0.0, day='monday', time_dep='05:00')
     to_palmares = CustomNode(city='Palmares', lon="84.439651966095", lat = "10.0674032568169", day='monday', time_dep='08:15')
-    
-    print(GRAPH.dijkstra(from_liberia, to_palmares))
+
+    print_dij_path(GRAPH.dijkstra(from_liberia, to_palmares))
+
+
+    from_liberia = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
+    to_palmares = CustomNode(city='Bagaces', lon=0.0, lat = 0.0, day='monday', time_dep='05:30')
+
+    res2 = compute_distance(from_liberia, to_palmares)
+
    # print(graph2.dijkstra('a', 'e'))
 
-  
+  # wait node bug test avec 5.31
     test= True
 
 
