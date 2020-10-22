@@ -32,30 +32,6 @@ class Graph:
             )
         )
 
-   #def get_node_pairs(self, n1, n2, both_ends=True):
-   #    if both_ends:
-   #        node_pairs = [[n1, n2], [n2, n1]]
-   #    else:
-   #        node_pairs = [[n1, n2]]
-   #    return node_pairs
-
-   #def remove_edge(self, n1, n2, both_ends=True):
-   #    node_pairs = self.get_node_pairs(n1, n2, both_ends)
-   #    edges = self.edges[:]
-   #    for edge in edges:
-   #        if [edge.start, edge.end] in node_pairs:
-   #            self.edges.remove(edge)
-
-   #def add_edge(self, n1, n2, cost=1, both_ends=True):
-   #    node_pairs = self.get_node_pairs(n1, n2, both_ends)
-   #    for edge in self.edges:
-   #        if [edge.start, edge.end] in node_pairs:
-   #            return ValueError('Edge {} {} already exists'.format(n1, n2))
-
-   #    self.edges.append(Edge(start=n1, end=n2, cost=cost))
-   #    if both_ends:
-   #        self.edges.append(Edge(start=n2, end=n1, cost=cost))
-
     @property
     def neighbours(self):
         neighbours = {vertex: set() for vertex in self.vertices}
@@ -131,7 +107,7 @@ class CustomNode:
         #to study
         return (self.__class__ == other.__class__) and (self.wait_node == other.wait_node and self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
 
-DEBUG = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
+DEBUG = CustomNode(city='Palmares',lon=1.0, lat=1.0, day='monday', time_dep='09:00')
 
 def compute_distance(from_node, to_node):  
         now = time_to_mins(from_node.time_dep)
@@ -162,25 +138,6 @@ class CustomEdge:
         return hash((self.from_node, self.to_node, self.dist))
     def __eq__(self, other):
         return (self.from_node == other.from_node) and (self.to_node == other.to_node) and (self.dist == other.dist)
-"""
-    def __compute_distance(self, from_node, to_node):
-        now = time_to_mins(from_node.time_dep)
-        now_day_idx = week_list.index(from_node.day)
-        next_day_idx = week_list.index(to_node.day)
-        nextt = time_to_mins(to_node.time_dep)
-        wait_duration = 0
-        # DIRTY
-        if next_day_idx < now_day_idx:
-            wait_duration = (len(week_list) - now_day_idx + next_day_idx) * time_to_mins('24:00') + nextt - now
-        elif next_day_idx > now_day_idx:
-            wait_duration = (next_day_idx - now_day_idx) * time_to_mins('24:00') + nextt - now 
-        elif next_day_idx == now_day_idx:
-            if  nextt > now:
-                wait_duration = nextt - now
-            else:
-                wait_duration = time_to_mins('24:00') * len(week_list) + nextt - now
-        return wait_duration
-"""
 
 class JsonParser:
     def __init__(self, collection_root_path):
@@ -198,6 +155,8 @@ class JsonParser:
                     stops_ids = json.load(json_file)
                     self.__process_stops_ids_to_graph(city_name, direct_connection, stops_ids)
 
+
+
     def __process_stops_ids_to_graph(self, city_name, direct_connection, stops_ids):
         for skey, scontent in stops_ids.items():
             flon = scontent.get('lon')
@@ -209,48 +168,55 @@ class JsonParser:
                     to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'))
                     f_t_edge = CustomEdge(from_node, to_node)
                     self.graph.append((from_node, to_node, f_t_edge.dist))
-                    if from_node == DEBUG or to_node == DEBUG:
-                        tt = True
                     self.edges_per_main_node[(city_name, direct_connection)].add(f_t_edge)
 
         # not optimal
-        pair = [pair for pair in self.edges_per_main_node.keys() if pair[0] == direct_connection] #only one, try catch
+        cross = True
+        pair = None
+        pair = [pair for pair in self.edges_per_main_node.keys() if pair[0] == direct_connection]
+        if len(pair) == 0:
+            pair = [pair for pair in self.edges_per_main_node.keys() if pair[1] == city_name]
+            cross = False
+
         if len(pair) > 1:
             return ValueError('Something went wrong with the data structure and the hashed IDs')
         if len(pair) == 0:
             return
         else:
-            #variable names are confusing
-            #must be an easier way
-            end_nodes_current_city = set()  #need to get nodes, not edges
+            end_nodes_current_city = set()  
             front_nodes_current_city = set()
             for edge in self.edges_per_main_node.get(pair[0]):
-                end_nodes_current_city.add(edge.from_node)
+                if cross:
+                    end_nodes_current_city.add(edge.from_node)
+                else:
+                    end_nodes_current_city.add(edge.to_node)
             for edge in self.edges_per_main_node.get((city_name, direct_connection)):
-                front_nodes_current_city.add(edge.to_node)
+                if cross:
+                    front_nodes_current_city.add(edge.to_node)
+                else:
+                    front_nodes_current_city.add(edge.from_node)
+
             for end_node in end_nodes_current_city:
                 mindist = inf
                 n = None
                 for front_node in front_nodes_current_city:
-                    dist = compute_distance(front_node, end_node) #same day same time and no other options = 10080 (next week), because of the way we hash things, it creates a node
-                    if dist == 10080:
-                        ttt = True
-                        if front_node == end_node:
-                            tt = True
-                    if front_node == end_node.time_dep : # +
-                        tt = True
+                    if cross:
+                        dist = compute_distance(front_node, end_node)
+                    else:
+                        dist = compute_distance(end_node, front_node)
+
                     if dist < mindist:
                         mindist = dist
                         n = front_node
                         n.wait_node = 'True'
-                self.graph.append(( n, end_node, mindist))
+                if cross:
+                    self.graph.append((n,  end_node,  mindist))
+
+                else:
+                    self.graph.append((end_node,  n,  mindist))
 
 
 if __name__ == '__main__':
-
-    #TODO: If a bus arrives at the same time as the next one goes, we are still gonna make a connection for the same very day. However in reality its not realistic, perhaps 
-    # I should exlude this case if the wait time <= 0
-
 
     test = defaultdict(set)
     test[('a', 'b')].add('fuck')
@@ -273,9 +239,15 @@ if __name__ == '__main__':
     GRAPH = Graph(json_parser.graph)
 
     from_liberia = CustomNode(city='Liberia',lon=0.0, lat=0.0, day='monday', time_dep='05:00')
-    to_palmares = CustomNode(city='Palmares', lon="84.439651966095", lat = "10.0674032568169", day='monday', time_dep='08:15')
+    to_palmares = CustomNode(city='Palmares', lon="1.0", lat = "1.0", day='monday', time_dep='08:15')
+    to_sj = CustomNode(city='End', lat = '2.0', lon = '2.0', day='monday', time_dep = '09:20')
 
-    print_dij_path(GRAPH.dijkstra(from_liberia, to_palmares))
+    B = CustomNode(city='B',lon=0.0, lat=0.0, day='monday', time_dep='01:30')
+    D = CustomNode(city='D',lon=0.0, lat=0.0, day='monday', time_dep='03:00')
+    C = CustomNode(city='C',lon=0.0, lat=0.0, day='monday', time_dep='02:15')
+    A = CustomNode(city='A',lon=0.0, lat=0.0, day='monday', time_dep='01:00')
+
+    print_dij_path(GRAPH.dijkstra(A, D))
 
 
     from_liberia = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
@@ -284,8 +256,6 @@ if __name__ == '__main__':
     res2 = compute_distance(from_liberia, to_palmares)
 
    # print(graph2.dijkstra('a', 'e'))
-
-  # wait node bug test avec 5.31
     test= True
 
 
