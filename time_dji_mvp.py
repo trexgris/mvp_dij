@@ -69,6 +69,15 @@ class Graph:
             path.appendleft(current_vertex)
         return path
 
+def compute_dij_path_total_distance(path):
+    ret = 0
+    if (len(path) <2):
+        return inf
+    for i in range(len(path) - 1):
+        ret += compute_distance(path[i], path[i + 1])
+    return ret
+
+
 def print_dij_path(path):
     for node in path:
         print(node.asdict2())
@@ -205,7 +214,7 @@ class JsonParser:
                     else:
                         dist = compute_distance(end_node, front_node)
 
-                    if dist < mindist:
+                    if dist < mindist:  #TODO Wrong ! should do for all, mnot just  min !! maybe add a threshold ??
                         mindist = dist
                         n = front_node
                         n.wait_node = 'True'
@@ -216,6 +225,41 @@ class JsonParser:
                     self.graph.append((end_node,  n,  mindist))
 
 
+def from_to(from_city, to_city, graph_without_random_start):
+    #1. get list of "from city" nodes,  use the from_city node to find the "shortest " distance accross the list of the from city nodes
+    # run dij on all possibilities with 3. ?
+    #2. add these edges to the graph
+    #3. list "to city" nodes, run dij against all of them with 1. ???
+
+    from_city_available_nodes = set()
+    to_city_available_nodes = set()
+
+    for edge in graph_without_random_start:
+        from_node = edge[0]
+        to_node = edge[1]
+        # insert thresholds / push criterias here ? so that we consider only the most relevants
+        if from_node.city == from_city.city:
+            from_city_available_nodes.add(from_node)
+        if to_node.city == to_city.city:
+            to_city_available_nodes.add(to_node)
+          
+
+    edges_cpy = graph_without_random_start.copy()
+
+    min_dij_path_len = inf
+    min_dij_path = deque()
+    for from_city_node in from_city_available_nodes:
+        edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
+        #can probably optimize as all the core of the tree wont change, only the start leaves + branc and end leaves
+        #to optimize, we could precompute on all the end nodes ?? and cache that?? or is recomputation more efficient
+    tmp_graph = Graph(edges_cpy)
+    for to_city_node in to_city_available_nodes:
+        tmp_path = tmp_graph.dijkstra(from_city, to_city_node)
+        tmp_dij_path_len = compute_dij_path_total_distance(tmp_path)
+        if tmp_dij_path_len < min_dij_path_len:
+            min_dij_path_len = tmp_dij_path_len
+            min_dij_path = tmp_path
+    return min_dij_path
 if __name__ == '__main__':
 
     test = defaultdict(set)
@@ -247,8 +291,17 @@ if __name__ == '__main__':
     C = CustomNode(city='C',lon=0.0, lat=0.0, day='monday', time_dep='02:15')
     A = CustomNode(city='A',lon=0.0, lat=0.0, day='monday', time_dep='01:00')
 
-    print_dij_path(GRAPH.dijkstra(A, D))
+    A2 = CustomNode(city='A',lon=-1.0, lat=-1.0, day='monday', time_dep='00:03')
+    D2 = CustomNode(city='D',lon=-1.0, lat=-1.0, day='', time_dep='')
 
+
+#start
+    #ttd = compute_dij_path_total_distance(GRAPH.dijkstra(A, D))
+    #print_dij_path(GRAPH.dijkstra(A, D))
+
+    final_result = from_to(A2, D2, json_parser.graph)
+    print(compute_dij_path_total_distance(final_result))
+    print_dij_path(final_result)
 
     from_liberia = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
     to_palmares = CustomNode(city='Bagaces', lon=0.0, lat = 0.0, day='monday', time_dep='05:30')
