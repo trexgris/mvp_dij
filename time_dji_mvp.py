@@ -214,15 +214,17 @@ class JsonParser:
                     else:
                         dist = compute_distance(end_node, front_node)
 
-                    if dist < mindist:  #TODO Wrong ! should do for all, mnot just  min !! maybe add a threshold ??
-                        mindist = dist
-                        n = front_node
-                        n.wait_node = 'True'
-                if cross:
-                    self.graph.append((n,  end_node,  mindist))
+                    #if dist < mindist:  #TODO Wrong ! should do for all, mnot just  min !! maybe add a threshold ??
+                    mindist = dist
+                    n = front_node
+                    n.wait_node = 'True'
+                    if mindist == inf:
+                        tt = True
+                    if cross:
+                        self.graph.append((n,  end_node,  mindist))
 
-                else:
-                    self.graph.append((end_node,  n,  mindist))
+                    else:
+                        self.graph.append((end_node,  n,  mindist))
 
 
 def from_to(from_city, to_city, graph_without_random_start):
