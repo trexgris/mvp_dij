@@ -12,9 +12,9 @@ week_list = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
 
 inf = float('inf')
 Edge = namedtuple('Edge', 'start, end, cost')
+
 def make_edge(start, end, cost=1):
     return Edge(start, end, cost)
-
 
 class Graph:
     def __init__(self, edges):
@@ -80,21 +80,16 @@ def compute_dij_path_total_distance(path):
 
 def print_dij_path(path):
     for node in path:
-        print(node.asdict2())
-
-
+        print(node.asdict())
 
 def get_stops_file_name(frm, to):
     return 'from_'+frm+'_to_'+to+'_stops.json'
 
-
-
 def time_to_mins(time_str):
-    if time_str == '05:30':
-        tt = True
     return int(time_str[:-3]) * 60 + int(time_str[-2:])
 
 class CustomNode:
+
     def __init__(self, city, lon, lat, day, time_dep, wait_node = ''):
         self.city = city
         if lon is None:
@@ -108,7 +103,8 @@ class CustomNode:
         self.day = day
         self.time_dep = time_dep
         self.wait_node = wait_node
-    def asdict2(self):
+
+    def asdict(self):
         return {'city': self.city, 'lon' : self.lon, 'lat': self.lat, 'day' : self.day, 'time': self.time_dep, 'wait_node': self.wait_node}
     def __hash__(self):
         return hash((self.city, self.lon, self.lat, self.day, self.time_dep, self.wait_node))
@@ -147,6 +143,7 @@ class CustomEdge:
         return (self.from_node == other.from_node) and (self.to_node == other.to_node) and (self.dist == other.dist)
 
 class JsonParser:
+
     def __init__(self, collection_root_path):
         self.graph  = []
         self.edges_per_main_node = defaultdict(lambda:set())
@@ -161,6 +158,13 @@ class JsonParser:
                 with open(p+json_name) as json_file:
                     stops_ids = json.load(json_file)
                     self.__process_stops_ids_to_graph(city_name, direct_connection, stops_ids)
+
+    def print_graph(self):
+        for edge in self.graph:
+            print(edge[0].asdict())
+            print(edge[1].asdict())
+            print(edge[2])
+            print('****')
 
 
 
@@ -207,23 +211,15 @@ class JsonParser:
                 mindist = inf
                 n = None
                 for front_node in front_nodes_current_city:
-                    if cross:
-                        dist = compute_distance(front_node, end_node)
-                    else:
-                        dist = compute_distance(end_node, front_node)
-
-                    #if dist < mindist:  #TODO Wrong ! should do for all, mnot just  min !! maybe add a threshold ??
-                    mindist = dist
                     n = front_node
                     n.wait_node = 'True'
-                    if mindist == inf:
-                        tt = True
                     if cross:
-                        self.graph.append((n,  end_node,  mindist))
+                        dist = compute_distance(front_node, end_node)
+                        self.graph.append((n,  end_node,  dist))
 
                     else:
-                        self.graph.append((end_node,  n,  mindist))
-
+                        dist = compute_distance(end_node, front_node)
+                        self.graph.append((end_node,  n,  dist))
 
 def from_to(from_city, to_city, graph_without_random_start):
     #1. get list of "from city" nodes,  use the from_city node to find the "shortest " distance accross the list of the from city nodes
@@ -275,5 +271,8 @@ if __name__ == '__main__':
     D2 = CustomNode(city='D',lon=-1.0, lat=-1.0, day='', time_dep='')
 
     final_result = from_to(A2, D2, json_parser.graph)
+
+    json_parser.print_graph()
+    print('-----------------\n')
     print(compute_dij_path_total_distance(final_result))
     print_dij_path(final_result)    
