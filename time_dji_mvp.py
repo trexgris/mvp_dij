@@ -116,8 +116,6 @@ class CustomNode:
         #to study
         return (self.__class__ == other.__class__) and (self.wait_node == other.wait_node and self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
 
-DEBUG = CustomNode(city='Palmares',lon=1.0, lat=1.0, day='monday', time_dep='09:00')
-
 def compute_distance(from_node, to_node):  
         now = time_to_mins(from_node.time_dep)
         now_day_idx = week_list.index(from_node.day)
@@ -262,31 +260,11 @@ def from_to(from_city, to_city, graph_without_random_start):
             min_dij_path_len = tmp_dij_path_len
             min_dij_path = tmp_path
     return min_dij_path
+
+
 if __name__ == '__main__':
 
-    test = defaultdict(set)
-    test[('a', 'b')].add('fuck')
-    daddy = ('a', 'b')
-    if 'b' in test.keys():
-        teffff =  True
-    if ('a','b') in test.keys():
-        teffff =  True
-    yas = [item for item in test.keys() if item[1] == 'b']
-
-
-
     json_parser = JsonParser('./costa_rica_test')
-
-    graph2 = Graph([
-       ("a", "b", 7),  ("a", "c", 9),  ("a", "f", 14), ("b", "c", 10),
-       ("b", "d", 15), ("c", "d", 11), ("c", "f", 2),  ("d", "e", 6),
-       ("e", "f", 9)])
-
-    GRAPH = Graph(json_parser.graph)
-
-    from_liberia = CustomNode(city='Liberia',lon=0.0, lat=0.0, day='monday', time_dep='05:00')
-    to_palmares = CustomNode(city='Palmares', lon="1.0", lat = "1.0", day='monday', time_dep='08:15')
-    to_sj = CustomNode(city='End', lat = '2.0', lon = '2.0', day='monday', time_dep = '09:20')
 
     B = CustomNode(city='B',lon=0.0, lat=0.0, day='monday', time_dep='01:30')
     D = CustomNode(city='D',lon=0.0, lat=0.0, day='monday', time_dep='03:00')
@@ -296,22 +274,6 @@ if __name__ == '__main__':
     A2 = CustomNode(city='A',lon=-1.0, lat=-1.0, day='monday', time_dep='00:03')
     D2 = CustomNode(city='D',lon=-1.0, lat=-1.0, day='', time_dep='')
 
-
-#start
-    #ttd = compute_dij_path_total_distance(GRAPH.dijkstra(A, D))
-    #print_dij_path(GRAPH.dijkstra(A, D))
-
     final_result = from_to(A2, D2, json_parser.graph)
     print(compute_dij_path_total_distance(final_result))
-    print_dij_path(final_result)
-
-    from_liberia = CustomNode(city='Bagaces',lon=0.0, lat=0.0, day='monday', time_dep='05:30')
-    to_palmares = CustomNode(city='Bagaces', lon=0.0, lat = 0.0, day='monday', time_dep='05:30')
-
-    res2 = compute_distance(from_liberia, to_palmares)
-
-   # print(graph2.dijkstra('a', 'e'))
-    test= True
-
-
-    
+    print_dij_path(final_result)    
