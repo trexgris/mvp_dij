@@ -4,7 +4,6 @@ import heapq
 from collections import defaultdict
 from decimal import Decimal
 import hashlib
-
 from collections import deque, namedtuple
 
 week_list = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -12,9 +11,53 @@ week_list = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
 
 inf = float('inf')
 Edge = namedtuple('Edge', 'start, end, cost')
+H24 = 1440
+
+def heuristic(neighbour, dest):
+    return compute_distance(neighbour, dest)
 
 def make_edge(start, end, cost=1):
     return Edge(start, end, cost)
+
+class RosettaGraph():
+    def __init__(self, edges):
+            self.edges = [Edge(*edge) for edge in edges]
+            # print(dir(self.edges[0]))
+            self.vertices = {e.start for e in self.edges} | {e.end for e in self.edges}
+ 
+    def dijkstra(self, source, dest):
+        assert source in self.vertices
+        dist = {vertex: inf for vertex in self.vertices}
+        previous = {vertex: None for vertex in self.vertices}
+        dist[source] = 0
+        q = self.vertices.copy()
+        neighbours = {vertex: set() for vertex in self.vertices}
+        for start, end, cost in self.edges:
+            neighbours[start].add((end, cost))
+        #pp(neighbours)
+ 
+        while q:
+            # pp(q)
+            u = min(q, key=lambda vertex: dist[vertex])
+            q.remove(u)
+            if dist[u] == inf or u == dest:
+                break
+            for v, cost in neighbours[u]:
+                alt = dist[u] + cost
+                if alt < dist[v]:                                  # Relax (u,v,a)
+                    dist[v] = alt + heuristic(v, dest)
+                    previous[v] = u
+        #pp(previous)
+        s, u = deque(), dest
+        while previous[u]:
+            s.appendleft(u)
+            u = previous[u]
+        s.appendleft(u)
+        return s
+
+
+
+
 
 class Graph:
     def __init__(self, edges):
@@ -55,10 +98,13 @@ class Graph:
             vertices.remove(current_vertex)
             if distances[current_vertex] == inf:
                 break
+
+            neighbours_of_current_vertex = self.neighbours[current_vertex]
             for neighbour, cost in self.neighbours[current_vertex]:
                 alternative_route = distances[current_vertex] + cost
                 if alternative_route < distances[neighbour]:
-                    distances[neighbour] = alternative_route
+                    heur_val = heuristic(neighbour, dest)
+                    distances[neighbour] = alternative_route + heur_val
                     previous_vertices[neighbour] = current_vertex
 
         path, current_vertex = deque(), dest
@@ -144,9 +190,10 @@ class CustomEdge:
 
 class JsonParser:
 
-    def __init__(self, collection_root_path):
+    def __init__(self, collection_root_path, departure_slot = None):
         self.graph  = []
         self.edges_per_main_node = defaultdict(lambda:set())
+        self.departure_slot = departure_slot
       
         cities = [ f.path for f in os.scandir(collection_root_path) if f.is_dir() ]
         for city in cities:
@@ -157,7 +204,7 @@ class JsonParser:
                 json_name = '\\' + get_stops_file_name(city_name, direct_connection)
                 with open(p+json_name) as json_file:
                     stops_ids = json.load(json_file)
-                    self.__process_stops_ids_to_graph(city_name, direct_connection, stops_ids)
+                    self.__process_stops_ids_to_graph(city_name, direct_connection, stops_ids, departure_slot)
 
     def print_graph(self):
         for edge in self.graph:
@@ -168,15 +215,24 @@ class JsonParser:
 
 
 
-    def __process_stops_ids_to_graph(self, city_name, direct_connection, stops_ids):
+    def __process_stops_ids_to_graph(self, city_name, direct_connection, stops_ids, departure_slot):
         for skey, scontent in stops_ids.items():
             flon = scontent.get('lon')
             flat = scontent.get('lat')
             schedule = scontent.get('schedule')
             for day, times in schedule.items():
                 for time in times:
+
                     from_node = CustomNode(city=city_name, lon=flon, lat=flat, day=day, time_dep=time.get('time_dep'))
                     to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'))
+
+                    #compare to 24h here[]
+                    if departure_slot is not None:
+                        departure_slot_from_dist = compute_distance(departure_slot, from_node)
+                        departure_slot_to_dist = compute_distance(departure_slot, to_node)
+                        if departure_slot_from_dist > H24 or  departure_slot_to_dist > H24:
+                            continue          
+    
                     f_t_edge = CustomEdge(from_node, to_node)
                     self.graph.append((from_node, to_node, f_t_edge.dist))
                     self.edges_per_main_node[(city_name, direct_connection)].add(f_t_edge)
@@ -221,7 +277,50 @@ class JsonParser:
                         dist = compute_distance(end_node, front_node)
                         self.graph.append((end_node,  n,  dist))
 
-def from_to(from_city, to_city, graph_without_random_start):
+
+def from_to_optimized(from_city, to_city, graph_without_random_start, rosetta=True):
+
+    from_city_available_nodes = set()
+    to_city_available_nodes = set()
+
+    for edge in graph_without_random_start:
+        from_node = edge[0]
+        to_node = edge[1]
+        # insert thresholds / push criterias here ? so that we consider only the most relevants
+        if from_node.city == from_city.city:
+            from_city_available_nodes.add(from_node)
+        if to_node.city == to_city.city:
+            to_city_available_nodes.add(to_node)
+              
+    edges_cpy = graph_without_random_start.copy()
+
+
+    for from_city_node in from_city_available_nodes:
+        edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
+    tmp_graph = None
+    if rosetta:
+        tmp_graph = RosettaGraph(edges_cpy)
+    else: 
+        tmp_graph = Graph(edges_cpy)
+
+
+    #check if looped over a week, if not take next day
+    min_dist_end = inf
+    min_dist_node = None
+    for to_city_node in to_city_available_nodes:
+        tmp_dist = compute_distance(from_city, to_city_node) # initial departure time VS end time , to see if we are still in the same week scope
+        if tmp_dist < min_dist_end:
+            min_dist_node = to_city_node
+            min_dist_end = tmp_dist
+    
+    return tmp_graph.dijkstra(from_city, min_dist_node) #edge case: might not always work, we would need to compare the total distance to see if its been more than a week
+
+    
+        
+
+
+
+def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True):
     #1. get list of "from city" nodes,  use the from_city node to find the "shortest " distance accross the list of the from city nodes
     # run dij on all possibilities with 3. ?
     #2. add these edges to the graph
@@ -237,8 +336,7 @@ def from_to(from_city, to_city, graph_without_random_start):
         if from_node.city == from_city.city:
             from_city_available_nodes.add(from_node)
         if to_node.city == to_city.city:
-            to_city_available_nodes.add(to_node)
-          
+            to_city_available_nodes.add(to_node)          
 
     edges_cpy = graph_without_random_start.copy()
 
@@ -248,7 +346,7 @@ def from_to(from_city, to_city, graph_without_random_start):
         edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
         #can probably optimize as all the core of the tree wont change, only the start leaves + branc and end leaves
         #to optimize, we could precompute on all the end nodes ?? and cache that?? or is recomputation more efficient
-    tmp_graph = Graph(edges_cpy)
+    tmp_graph = RosettaGraph(edges_cpy)
     for to_city_node in to_city_available_nodes:
         tmp_path = tmp_graph.dijkstra(from_city, to_city_node)
         tmp_dij_path_len = compute_dij_path_total_distance(tmp_path)
