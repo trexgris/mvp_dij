@@ -46,17 +46,20 @@ if __name__ == "__main__":
     costa_rica_map = 'costa_rica_map.html'
 
     os.chdir('.')
-    FROM_BAGACES = CustomNode(city='Bagaces',lat=10.522919, lon=-85.254421, day='monday', time_dep='05:15')
+    FROM_BAGACES = CustomNode(city='Bagaces',lat=10.522919, lon=-85.254421, day='monday', time_dep='05:15', family = None)
 
     json_parser = JsonParser('./costa_rica_test', departure_slot = FROM_BAGACES)
     display_cities_in_map(json_parser.graph, MAP)
 
-    TO_PALMARES = CustomNode(city='Palmares',lat=10.0674032568169, lon=-84.439651966095, day='', time_dep='')
+    TO_PALMARES = CustomNode(city='Palmares',lat=10.0674032568169, lon=-84.439651966095, day='', time_dep='', family = None)
 
-    TO_LIBERIA = CustomNode(city='Liberia',lat=-14.0, lon=-140, day='', time_dep='')
+    TO_LIBERIA = CustomNode(city='Liberia',lat=-14.0, lon=-140, day='', time_dep='', family = None)
 
+    DEBUG_LIBERIATO = CustomNode(city='Liberia', lat=Decimal('10.6293285846986'),
+     lon=Decimal('85.4429429769516'), day='monday', time_dep='12:15', family = None)
 
-    final_result = from_to_all(FROM_BAGACES, TO_LIBERIA, json_parser.graph, rosetta=True)
+ #   fr = from_to_debug(FROM_BAGACES, DEBUG_LIBERIATO, json_parser.graph, rosetta=True)
+    final_result = from_to_all(FROM_BAGACES, TO_LIBERIA, json_parser.graph, rosetta=True, debug=DEBUG_LIBERIATO)
     final_result2 = from_to_optimized(FROM_BAGACES, TO_LIBERIA, json_parser.graph, rosetta=True)
 
     #display_path_in_map(final_result, MAP)

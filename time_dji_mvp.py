@@ -1,6 +1,7 @@
 import os
 import json
 import heapq
+import collections
 from collections import defaultdict
 from decimal import Decimal
 import hashlib
@@ -136,7 +137,7 @@ def time_to_mins(time_str):
 
 class CustomNode:
 
-    def __init__(self, city, lon, lat, day, time_dep, wait_node = ''):
+    def __init__(self, city, lon, lat, day, time_dep, family, wait_node = ''):
         self.city = city
         if lon is None:
             self.lon = Decimal(0.0)
@@ -148,15 +149,16 @@ class CustomNode:
             self.lat = Decimal(lat)
         self.day = day
         self.time_dep = time_dep
+        self.family = family
         self.wait_node = wait_node
 
     def asdict(self):
-        return {'city': self.city, 'lon' : self.lon, 'lat': self.lat, 'day' : self.day, 'time': self.time_dep, 'wait_node': self.wait_node}
+        return {'city': self.city, 'lon' : self.lon, 'lat': self.lat, 'day' : self.day, 'time': self.time_dep, 'print': self.family, 'wait_node': self.wait_node}
     def __hash__(self):
-        return hash((self.city, self.lon, self.lat, self.day, self.time_dep, self.wait_node))
+        return hash((self.city, self.lon, self.lat, self.day, self.time_dep, self.family, self.wait_node))
     def __eq__(self, other):
         #to study
-        return (self.__class__ == other.__class__) and (self.wait_node == other.wait_node and self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
+        return (self.__class__ == other.__class__) and (self.family == other.family and self.wait_node == other.wait_node and self.city == other.city and self.lon == other.lon and self.lat == other.lat and self.day == other.day and self.time_dep== other.time_dep )
 
 def compute_distance(from_node, to_node):  
         now = time_to_mins(from_node.time_dep)
@@ -223,8 +225,8 @@ class JsonParser:
             for day, times in schedule.items():
                 for time in times:
 
-                    from_node = CustomNode(city=city_name, lon=flon, lat=flat, day=day, time_dep=time.get('time_dep'))
-                    to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'))
+                    from_node = CustomNode(city=city_name, lon=flon, lat=flat, day=day, time_dep=time.get('time_dep'), family=city_name+direct_connection)
+                    to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'),family=city_name+direct_connection)
 
                     #compare to 24h here[]
                     if departure_slot is not None:
@@ -235,6 +237,8 @@ class JsonParser:
     
                     f_t_edge = CustomEdge(from_node, to_node)
                     self.graph.append((from_node, to_node, f_t_edge.dist))
+                    if f_t_edge.to_node.lat == 0:
+                        zhqt = True
                     self.edges_per_main_node[(city_name, direct_connection)].add(f_t_edge)
 
         # not optimal
@@ -318,9 +322,42 @@ def from_to_optimized(from_city, to_city, graph_without_random_start, rosetta=Tr
     
         
 
+def from_to_debug(from_city, to_city, graph_without_random_start, rosetta = True):
+    from_city_available_nodes = set()
+    to_city_available_nodes = set()
 
+    for edge in graph_without_random_start:
+        from_node = edge[0]
+        to_node = edge[1]
+        # insert thresholds / push criterias here ? so that we consider only the most relevants
+        if from_node.city == from_city.city:
+            from_city_available_nodes.add(from_node)
+        if to_node.city == to_city.city:
+            to_city_available_nodes.add(to_node)          
 
-def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True):
+    edges_cpy = graph_without_random_start.copy()
+
+    min_dij_path_len = inf
+    min_dij_path = deque()
+    for from_city_node in from_city_available_nodes:
+        edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
+        #can probably optimize as all the core of the tree wont change, only the start leaves + branc and end leaves
+        #to optimize, we could precompute on all the end nodes ?? and cache that?? or is recomputation more efficient
+    tmp_graph = RosettaGraph(edges_cpy)
+    tmp_path = tmp_graph.dijkstra(from_city, to_city)
+    return deque(tmp_path)
+
+def unfold_graph(edges):
+    res = []
+    for e in edges:
+        res.append(e[0])
+        res.append(e[1])
+    res2 = set(res)
+    resa = set([x for x in res if res.count(x) > 3])
+
+    return res2
+
+def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True, debug = None):
     #1. get list of "from city" nodes,  use the from_city node to find the "shortest " distance accross the list of the from city nodes
     # run dij on all possibilities with 3. ?
     #2. add these edges to the graph
@@ -346,6 +383,7 @@ def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True):
         edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
         #can probably optimize as all the core of the tree wont change, only the start leaves + branc and end leaves
         #to optimize, we could precompute on all the end nodes ?? and cache that?? or is recomputation more efficient
+    unfold_graph(edges_cpy)
     tmp_graph = RosettaGraph(edges_cpy)
     for to_city_node in to_city_available_nodes:
         tmp_path = tmp_graph.dijkstra(from_city, to_city_node)
