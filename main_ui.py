@@ -47,16 +47,20 @@ if __name__ == "__main__":
 
     os.chdir('.')
     FROM_BAGACES = CustomNode(city='Bagaces',lat=10.522919, lon=-85.254421, day='monday', time_dep='05:15', family = None)
-
     json_parser = JsonParser('./costa_rica_test', departure_slot = FROM_BAGACES)
-    display_cities_in_map(json_parser.graph, MAP)
+#    display_cities_in_map(json_parser.graph, MAP)
 
     TO_PALMARES = CustomNode(city='Palmares',lat=10.0674032568169, lon=-84.439651966095, day='', time_dep='', family = None)
-
     TO_LIBERIA = CustomNode(city='Liberia',lat=-14.0, lon=-140, day='', time_dep='', family = None)
-
     DEBUG_LIBERIATO = CustomNode(city='Liberia', lat=Decimal('10.6293285846986'),
-     lon=Decimal('85.4429429769516'), day='monday', time_dep='12:15', family = None)
+     lon=Decimal('85.4429429769516'), day='monday', time_dep='12:15', family = 'PalmaresLiberia')
+
+
+    BAG_QUICK = CustomNode(city='Bagaces',lat=0, lon=0, day='', time_dep='', family = '')
+    LIB_QUICK = CustomNode(city='Liberia',lat=0, lon=0, day='', time_dep='', family = '')
+    mg = RosettaGraph(json_parser.mean_graph)
+    md = mg.dijkstra(BAG_QUICK, LIB_QUICK)
+    json_parser.refine_graph_with('./costa_rica_test', md, FROM_BAGACES)
 
  #   fr = from_to_debug(FROM_BAGACES, DEBUG_LIBERIATO, json_parser.graph, rosetta=True)
     final_result = from_to_all(FROM_BAGACES, TO_LIBERIA, json_parser.graph, rosetta=True, debug=DEBUG_LIBERIATO)

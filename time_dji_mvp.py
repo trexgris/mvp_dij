@@ -15,7 +15,7 @@ Edge = namedtuple('Edge', 'start, end, cost')
 H24 = 1440
 
 def heuristic(neighbour, dest):
-    return compute_distance(neighbour, dest)
+    return 0#compute_distance(neighbour, dest)
 
 def make_edge(start, end, cost=1):
     return Edge(start, end, cost)
@@ -194,9 +194,66 @@ class JsonParser:
 
     def __init__(self, collection_root_path, departure_slot = None):
         self.graph  = []
+        self.mean_graph = []
         self.edges_per_main_node = defaultdict(lambda:set())
         self.departure_slot = departure_slot
-      
+        self.collection_root_path = collection_root_path
+        #self.__init_big_graph(collection_root_path, departure_slot)
+        self.__init_mean_graph(collection_root_path)
+    def refine_graph_with(self, root_path, mean_dij, departure_slot):
+
+
+        for el in mean_dij:
+            direct_connections = [ f.name for f in os.scandir(root_path+'\\'+el.city) if f.is_dir() ]
+            for direct_connection in direct_connections:
+                p = el.city + '\\' + direct_connection
+                json_name = '\\' + get_stops_file_name(el.city, direct_connection)
+                with open(root_path + '\\'+p+json_name) as json_file:
+                    stops_ids = json.load(json_file)
+                    if len(stops_ids) > 0:
+                        self.__process_stops_ids_to_graph(el.city, direct_connection, stops_ids, departure_slot)
+        self.__build_connections()
+            
+        pass
+
+    def __init_mean_graph(self, collection_root_path):
+        cities = [ f.path for f in os.scandir(collection_root_path) if f.is_dir() ]
+        for city in cities:
+            direct_connections = [ f.name for f in os.scandir(city) if f.is_dir() ]
+            for direct_connection in direct_connections:
+                city_name = city.rsplit('\\', 1)[-1]
+                p = city + '\\' + direct_connection
+                json_name = '\\' + get_stops_file_name(city_name, direct_connection)
+                with open(p+json_name) as json_file:
+                    stops_ids = json.load(json_file)
+                    self.__process_stops_ids_to_mean_graph(city_name, direct_connection, stops_ids)
+
+    def __process_stops_ids_to_mean_graph(self, city_name, direct_connection, stops_ids):
+        mean_dist_all_stops = dict()
+        for skey, scontent in stops_ids.items():
+            flon = scontent.get('lon')
+            flat = scontent.get('lat')
+            schedule = scontent.get('schedule')
+            means_week = dict()
+            for day, times in schedule.items():
+                mean_dist_day = 0
+                for time in times:
+                    from_node = CustomNode(city=city_name, lon=flon, lat=flat, day=day, time_dep=time.get('time_dep'), family=city_name+direct_connection)
+                    to_node = CustomNode(city=direct_connection, lon=time.get('to_lon'), lat = time.get('to_lat'), day = time.get('date_arr'), time_dep=time.get('time_arr'),family=city_name+direct_connection)
+                    mean_dist_day += compute_distance(from_node, to_node)
+
+                means_week[day] = mean_dist_day  / len(times)
+            val = sum(means_week.values()) / len(means_week)
+            mean_dist_all_stops[skey] = val
+            
+        if len(mean_dist_all_stops) > 0:
+            val = sum(mean_dist_all_stops.values()) / len(mean_dist_all_stops)
+            from_node = CustomNode(city=city_name, lon=0, lat=0, day='', time_dep='', family='')
+            to_node = CustomNode(city=direct_connection, lon=0, lat=0, day='', time_dep='', family='')
+            self.mean_graph.append((from_node, to_node, val))
+
+
+    def __init_big_graph(self, collection_root_path, departure_slot):  
         cities = [ f.path for f in os.scandir(collection_root_path) if f.is_dir() ]
         for city in cities:
             direct_connections = [ f.name for f in os.scandir(city) if f.is_dir() ]
@@ -207,13 +264,8 @@ class JsonParser:
                 with open(p+json_name) as json_file:
                     stops_ids = json.load(json_file)
                     self.__process_stops_ids_to_graph(city_name, direct_connection, stops_ids, departure_slot)
-
-    def print_graph(self):
-        for edge in self.graph:
-            print(edge[0].asdict())
-            print(edge[1].asdict())
-            print(edge[2])
-            print('****')
+        self.__build_connections()
+        
 
 
 
@@ -237,50 +289,81 @@ class JsonParser:
     
                     f_t_edge = CustomEdge(from_node, to_node)
                     self.graph.append((from_node, to_node, f_t_edge.dist))
-                    if f_t_edge.to_node.lat == 0:
-                        zhqt = True
+
                     self.edges_per_main_node[(city_name, direct_connection)].add(f_t_edge)
 
-        # not optimal
-        cross = True
-        pair = None
-        pair = [pair for pair in self.edges_per_main_node.keys() if pair[0] == direct_connection]
-        if len(pair) == 0:
-            pair = [pair for pair in self.edges_per_main_node.keys() if pair[1] == city_name]
-            cross = False
 
-        if len(pair) > 1:
-            return ValueError('Something went wrong with the data structure and the hashed IDs')
-        if len(pair) == 0:
-            return
-        else:
-            end_nodes_current_city = set()  
-            front_nodes_current_city = set()
-            for edge in self.edges_per_main_node.get(pair[0]):
-                if cross:
-                    end_nodes_current_city.add(edge.from_node)
-                else:
-                    end_nodes_current_city.add(edge.to_node)
-            for edge in self.edges_per_main_node.get((city_name, direct_connection)):
-                if cross:
-                    front_nodes_current_city.add(edge.to_node)
-                else:
-                    front_nodes_current_city.add(edge.from_node)
-
-            for end_node in end_nodes_current_city:
-                mindist = inf
-                n = None
-                for front_node in front_nodes_current_city:
-                    n = front_node
-                    n.wait_node = 'True'
-                    if cross:
-                        dist = compute_distance(front_node, end_node)
-                        self.graph.append((n,  end_node,  dist))
-
-                    else:
+    def __build_connections(self):
+        # bad performances
+        for edge_id, content in self.edges_per_main_node.items():
+            frm = edge_id[0]
+            to = edge_id[1]
+            for e2, content2 in self.edges_per_main_node.items():
+                if e2[0] != to:
+                    continue
+                for content_end in content:
+                    end_node = content_end.to_node
+                    for content_front in content2:
+                        front_node = content_front.from_node
+                        n = front_node
+                        n.wait_node = 'True'
                         dist = compute_distance(end_node, front_node)
-                        self.graph.append((end_node,  n,  dist))
+                        self.graph.append((end_node, n,  dist))
 
+    def print_graph(self):
+        for edge in self.graph:
+            print(edge[0].asdict())
+            print(edge[1].asdict())
+            print(edge[2])
+            print('****')
+
+
+
+
+
+
+
+
+        # not optimal
+        #cross = True
+        #pair = None
+        #pair = [pair for pair in self.edges_per_main_node.keys() if pair[0] == direct_connection]
+        #if len(pair) == 0:
+        #    pair = [pair for pair in self.edges_per_main_node.keys() if pair[1] == city_name]
+        #    cross = False
+#
+        #if len(pair) > 1:
+        #    return ValueError('Something went wrong with the data structure and the hashed IDs')
+        #if len(pair) == 0:
+        #    return
+        #else:
+        #    end_nodes_current_city = set()  
+        #    front_nodes_current_city = set()
+        #    for edge in self.edges_per_main_node.get(pair[0]):
+        #        if cross:
+        #            end_nodes_current_city.add(edge.from_node)
+        #        else:
+        #            end_nodes_current_city.add(edge.to_node)
+        #    for edge in self.edges_per_main_node.get((city_name, direct_connection)):
+        #        if cross:
+        #            front_nodes_current_city.add(edge.to_node)
+        #        else:
+        #            front_nodes_current_city.add(edge.from_node)
+#
+        #    for end_node in end_nodes_current_city:
+        #        mindist = inf
+        #        n = None
+        #        for front_node in front_nodes_current_city:
+        #            n = front_node
+        #            n.wait_node = 'True'
+        #            #if cross:
+        #            dist = compute_distance(front_node, end_node)
+        #            self.graph.append((n,  end_node,  dist))
+#
+        #            #else:
+        #            dist = compute_distance(end_node, front_node)
+        #            self.graph.append((end_node,  n,  dist))
+##
 
 def from_to_optimized(from_city, to_city, graph_without_random_start, rosetta=True):
 
@@ -357,7 +440,7 @@ def unfold_graph(edges):
 
     return res2
 
-def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True, debug = None):
+def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True, mean_opt = None, debug = None):
     #1. get list of "from city" nodes,  use the from_city node to find the "shortest " distance accross the list of the from city nodes
     # run dij on all possibilities with 3. ?
     #2. add these edges to the graph
@@ -383,15 +466,21 @@ def from_to_all(from_city, to_city, graph_without_random_start, rosetta = True, 
         edges_cpy.append((from_city, from_city_node, compute_distance(from_city, from_city_node)))
         #can probably optimize as all the core of the tree wont change, only the start leaves + branc and end leaves
         #to optimize, we could precompute on all the end nodes ?? and cache that?? or is recomputation more efficient
-    unfold_graph(edges_cpy)
+    #unfold_graph(edges_cpy)
     tmp_graph = RosettaGraph(edges_cpy)
-    for to_city_node in to_city_available_nodes:
-        tmp_path = tmp_graph.dijkstra(from_city, to_city_node)
-        tmp_dij_path_len = compute_dij_path_total_distance(tmp_path)
-        if tmp_dij_path_len < min_dij_path_len:
-            min_dij_path_len = tmp_dij_path_len
-            min_dij_path = tmp_path
-    return min_dij_path
+
+    refined = [node for node in to_city_available_nodes if node.wait_node != 'True'] #use the mean for the opt one
+    if mean_opt is None:
+        for to_city_node in refined:
+            tmp_path = tmp_graph.dijkstra(from_city, to_city_node)
+            tmp_dij_path_len = compute_dij_path_total_distance(tmp_path)
+            if tmp_dij_path_len < min_dij_path_len:
+                min_dij_path_len = tmp_dij_path_len
+                min_dij_path = tmp_path
+        return min_dij_path
+    #else:
+    #    for el in refined:
+    #        if 
 
 
 if __name__ == '__main__':
